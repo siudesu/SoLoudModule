@@ -134,9 +134,9 @@ local M = {}
 		-- Note: Returns the available channel number, else returns false if none found.
 		
 		-- Loop through the channels to find one currently not in use and not reserved.
-		local from = startFrom_ or 1
+		local from = startFrom_ >= 1 and startFrom_ or 1
 		for i=from, totalChannels do
-			if not channels[i].reserved and not channels[i].state == STATE.INACTIVE then
+			if not channels[i].reserved and channels[i].state == STATE.INACTIVE then
 				return i;
 			end
 		end
@@ -159,7 +159,7 @@ local M = {}
 		if cache[fileName_] then cache[fileName_].wavObj:destroy() end
 		
 		-- All channels that were playing the audio will be clear.
-		clearAllChannels(filename_)
+		clearAllChannels(fileName_)
 		
 		-- Clear cache.
 		cache[fileName_] = nil
@@ -241,9 +241,9 @@ local M = {}
 	-- Solar2D API: audio.findFreeChannel( [ startChannel ] )
 	-- Search will increase upwards from this channel. 0 or no parameter begins searching at the lowest possible value.
 	-- The search does not include reserved channels.
-
+		local startChannel = startChannel_ or 0
 			-- Returns 0 if no available channel found, else it returns next available channel.
-			return getNextAvailableChannel(startChannel_ or 0) or 0
+			return getNextAvailableChannel(startChannel) or 0
 	end
 
 	-------------------------------------
@@ -499,7 +499,7 @@ local M = {}
 			soloudCore:scheduleStop(channelData.handleID, cachedData.duration)
 		end
 
-		return true
+		return cachedData.channel
 	end
 	
 	-------------------------------------
@@ -710,10 +710,10 @@ local M = {}
 		end
 	
 		-- Do nothing else if channel is not valid.
-		if channel_ <= 0 or channel_ > totalChannels then return false end
+		if channel_ <= 1 or channel_ > totalChannels then return false end
 
 		-- Else, clear the designated channel.
-		if cache[channels[channel_].fileName].wavObj then
+		if cache[channels[channel_]] and cache[channels[channel_].fileName].wavObj then
 			cache[channels[channel_].fileName].wavObj:stop()	-- stop audio
 			clearChannel(channel_) -- clear channel
 			return true
