@@ -11,7 +11,7 @@
 </br>
 
 ## Limitations
- - Currently, SoLoud plugin is **only available for Windows OS build**.
+ - Currently, SoLoud plugin is **not available for Linux or Switch**.
  - `stopWithDelay()` is not implemented. The same effect can be accomplished outside this module with a `timer` and `AUDIO.stop()`
  - `fadeOut()` is not implemented. The same effect can be accomplished outside this module with `AUDIO.fade()` and a `timer` to perform `AUDIO.stop()`.
 
