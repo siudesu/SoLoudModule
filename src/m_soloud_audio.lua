@@ -1,5 +1,5 @@
 --  SoLoud Module
---  Last Revision: 2023.05.31
+--  Last Revision: 2023.06.01
 --	Lua version: 5.1
 --	License: MIT
 --	Copyright <2023> <siu>
@@ -452,10 +452,16 @@ local M = {}
 			o.duration = 0
 			o.fadein = 0
 			o.onComplete = nil
+		else
+			o.channel = options_.channel or 0 
+			o.loops = options_.loops or 0
+			o.duration = options_.duration or 0
+			o.fadein = options_.fadein or 0
+			o.onComplete = options_.onComplete or nil	
 		end
 		
 		-- Verify options_ data.
-		cachedData.channel = ( o.channel and (o.channel > 0 and o.channel <= totalChannels) ) and o.channel or getNextAvailableChannel()
+		cachedData.channel = ( o.channel and (o.channel > 0 and o.channel <= totalChannels) ) and o.channel or getNextAvailableChannel(0)
 		if not cachedData.channel then print("Error: No channels available to play audio."); printDebug() return false end
 		
 		local channelData = channels[cachedData.channel]
@@ -473,10 +479,10 @@ local M = {}
 		
 		-- Piggyback onComplete to clean up channel.
 		local onComplete
-		if options_.onComplete then
+		if o.onComplete then
 			onComplete = function() 
 				clearChannel(cachedData.channel)
-				options_.onComplete()
+				o.onComplete()
 			end
 		else
 			onComplete = function() 
