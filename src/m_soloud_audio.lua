@@ -1,5 +1,5 @@
 --  SoLoud Module
---  Last Revision: 2023.05.23
+--  Last Revision: 2023.05.31
 --	Lua version: 5.1
 --	License: MIT
 --	Copyright <2023> <siu>
