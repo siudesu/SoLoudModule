@@ -716,10 +716,11 @@ local M = {}
 		end
 	
 		-- Do nothing else if channel is not valid.
-		if channel_ <= 1 or channel_ > totalChannels then return false end
+		if type(channel_) ~= "number" then print("Error: Must provide a valid channel value."); printDebug() return false end
+		if channel_ < 1 or channel_ > totalChannels then print("Error: Channel value not in range."); printDebug()  return false end
 
-		-- Else, clear the designated channel.
-		if cache[channels[channel_]] and cache[channels[channel_].fileName].wavObj then
+		-- Else, clear the specified channel if active.
+		if channels[channel_].state ~= STATE.INACTIVE then
 			cache[channels[channel_].fileName].wavObj:stop()	-- stop audio
 			clearChannel(channel_) -- clear channel
 			return true
