@@ -4,8 +4,7 @@
 </br>
 
 ## State: [Testing Phase]
-- Expect bugs.
-- Please report any findings. 
+- Might find bugs. Please report any if not [already reported](https://github.com/siudesu/SoLoudModule/issues). 
 - Updates are made frequently.
 
 </br>

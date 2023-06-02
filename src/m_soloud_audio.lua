@@ -415,11 +415,12 @@ local M = {}
 			cache[filename_] = {}
 			cache[filename_].wavObj = soloud.createWav()
 			
+			-- Get final path
+			local filePath = baseDir_ and system.pathForFile(filename_, baseDir_) or filename_ 
+
 			-- Create 
-			local filePath = baseDir_ and baseDir_ .. "/" .. filename_ or filename_
-			
 			if not cache[filename_].wavObj then print("Error: Could not create wav object."); printDebug() return false end
-			if not cache[filename_].wavObj:load(filename_) then print("Error: Could not load audio file:", filename_); printDebug() return false end
+			if not cache[filename_].wavObj:load(filePath) then print("Error: Could not load audio file:", filePath); printDebug() return false end
 		end
 		return filename_
 	end
@@ -520,9 +521,9 @@ local M = {}
 			o.fadein = options_.fadein or 0
 			o.onComplete = options_.onComplete or nil	
 		end
-		
+
 		-- Verify options_ data.
-		cachedData.channel = ( o.channel and (o.channel > 0 and o.channel <= totalChannels) ) and o.channel or getNextAvailableChannel(0)
+		cachedData.channel = ((o.channel > 0 and o.channel <= totalChannels) and o.channel or getNextAvailableChannel(0))
 		if not cachedData.channel then print("Error: No channels available to play audio."); printDebug() return false end
 		
 		local channelData = channels[cachedData.channel]
