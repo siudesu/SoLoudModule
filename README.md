@@ -1,6 +1,12 @@
 # SoLoud Module
 ### This [Solar2D](https://solar2d.com) Lua module aims to be a drop-in replacement for the audio API using the [SoLoud plugin](https://forums.solar2d.com/t/soloud-audio-plugin/355040).
 
+</br>
+
+## State: [Testing Phase]
+- Expect bugs.
+- Please report any findings. 
+- Updates are made frequently.
 
 </br>
 
