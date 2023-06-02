@@ -116,11 +116,17 @@ MODULE.loadStreamFromArchive(filename_, data_)
 
 ### Properties (Read Only):
 ```
-audio.freeChannels
-audio.totalChannels
-audio.unreservedFreeChannels
-audio.unreservedUsedChannels
-audio.usedChannels
+MODULE.freeChannels
+MODULE.totalChannels
+MODULE.unreservedFreeChannels
+MODULE.unreservedUsedChannels
+MODULE.usedChannels
+```
+
+### Extra Functions:
+```
+MODULE.setPitch(channel, pitchValue)
+MODULE.setSpeed(channel, speedValue)
 ```
 
 ---

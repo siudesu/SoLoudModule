@@ -55,6 +55,7 @@ local soloud = require("plugin.soloud")
 local debug = debug
 local s_gsub = string.gsub
 local m_round = math.round
+local tostring = tostring
 local type = type
 local debugMode = true
 
@@ -450,9 +451,9 @@ local M = {}
 	-- By default sound files are expected to be in the project folder (system.ResourceDirectory).
 	-- If the sound file is in the application documents directory, use system.DocumentsDirectory.
 	-- This function returns a handle to a sound file. In this case it's the filename_ used.
-	
+
 		if not filename_ then print("Error: Must provide a valid path for audio file."); printDebug() return false end
-		
+
 		if not cache[filename_] then
 			cache[filename_] = {}
 			cache[filename_].wavObj = soloud.createWavStream()
@@ -516,7 +517,7 @@ local M = {}
 		-- Check audio file has already been loaded.
 		local cachedData = cache[filename_]
 		if not cachedData then print("Error: Audio file must be loaded before playing: " .. filename_); printDebug() return false end
-		
+
 		-- Get options_ table.
 	 local o = options_
 		if not o then	-- assign default values
@@ -526,12 +527,14 @@ local M = {}
 			o.duration = 0
 			o.fadein = 0
 			o.onComplete = nil
+			o.pitch = 1 -- regular
 		else
-			o.channel = options_.channel or 0 
+			o.channel = options_.channel or 0
 			o.loops = options_.loops or 0
 			o.duration = options_.duration or 0
 			o.fadein = options_.fadein or 0
-			o.onComplete = options_.onComplete or nil	
+			o.onComplete = options_.onComplete or nil
+			o.pitch = options_.pitch or 1
 		end
 
 		-- Verify options_ data.
@@ -572,6 +575,12 @@ local M = {}
 		else	-- play normal
 			channelData.handleID = soloudCore:play( cachedData.wavObj, { volume = channelData.volume, onComplete = onComplete });
 		end
+
+		-- Get default sample rate
+		channelData.sampleRate = soloudCore:getSamplerate(channelData.handleID)
+
+		-- Set pitch
+		soloudCore:setSamplerate(channelData.handleID, channelData.sampleRate * o.pitch);
 
 		-- Set duration.
 		cachedData.duration = o.duration and o.duration * 0.001 or 0
@@ -658,7 +667,8 @@ local M = {}
 	-------------------------------------
 	function M.seek(time_, value_)
 	-- Solar2D API: audio.seek( time [, audioHandle ] [, options ] )
-
+	-- Does not use the `options.channel` and `audioHandle` parameter in the same call.
+	
 		if not time_ then print("Error: Must provide a valid value for `time`"); printDebug() return false end
 		
 		-- if options is a channel
@@ -837,6 +847,25 @@ local M = {}
 			end
 			return true			
 		end
+	end
+
+
+	---- New Functions ------------------------------------------------------------
+
+
+	function M.setPitch(channel_, pitch_)
+	-- al.PITCH value is used to control the playback speed and pitch of audio source together.
+	-- SoLoud's equivalent would be setSamplerate(); affects both the speed and the pitch of the audio.
+	
+		if not channels[channel_] then print("Error: Audio handle not found: " .. tostring(channel_)); printDebug() return false end
+		soloudCore:setSamplerate(channels[channel_].handleID, channels[channel_].sampleRate * pitch_);
+	end
+
+	function M.setSpeed(channel_, playSpeed_)
+	-- Changes playback speed.
+
+		if not channels[channel_] then print("Error: Audio handle not found: " .. tostring(channel_)); printDebug() return false end
+		soloudCore:setRelativePlaySpeed(channels[channel_].handleID, playSpeed_)
 	end
 
 	-- Return audio property values; these are meant to be read-only.
