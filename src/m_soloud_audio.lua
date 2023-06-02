@@ -407,6 +407,7 @@ local M = {}
 	-- Solar2D API: audio.loadSound( audiofileName [, baseDir ]  )
 	-- By default sound files are expected to be in the project folder (system.ResourceDirectory).
 	-- If the sound file is in the application documents directory, use system.DocumentsDirectory.
+	-- This function returns a handle to a sound file. In this case it's the filename_ used.
 
 		if not filename_ then print("Error: Must provide a valid path for audio file."); printDebug() return false end
 		
@@ -414,14 +415,15 @@ local M = {}
 		if not cache[filename_] then
 			cache[filename_] = {}
 			cache[filename_].wavObj = soloud.createWav()
-			
-			-- Get final path
-			local filePath = baseDir_ and system.pathForFile(filename_, baseDir_) or filename_ 
 
-			-- Create 
+			-- Verify no issues on creating wavObj 
 			if not cache[filename_].wavObj then print("Error: Could not create wav object."); printDebug() return false end
-			if not cache[filename_].wavObj:load(filePath) then print("Error: Could not load audio file:", filePath); printDebug() return false end
+
+			-- Get final path for debug output
+			local filePath = baseDir_ and system.pathForFile("", baseDir_) .. "\\" .. filename_ or filename_ 
+			if not cache[filename_].wavObj:load(filename_, baseDir_) then print("Error: Could not load audio file:", filePath); printDebug() return false end
 		end
+		-- Return filename_ as handle
 		return filename_
 	end
 
@@ -434,25 +436,35 @@ local M = {}
 			cache[filename_] = {}
 			cache[filename_].wavObj = soloud.createWav()
 			if not cache[filename_].wavObj then print("Error: Could not create wav object."); printDebug() return false end
-
 			if not cache[filename_].wavObj:loadMem(data_[1]) then print("Error: Could not load audio file:", filename_); printDebug() return false end
 		end
-		-- Return filename_ as reference
+		-- Return filename_ as handle
 		return filename_
 	end
 
 	-------------------------------------
 	-- Load Stream
 	-------------------------------------
-	function M.loadStream(filename_)
+	function M.loadStream(filename_, baseDir_)
+	-- Solar2D API: audio.loadStream( audioFileName [, baseDir ]  )
+	-- By default sound files are expected to be in the project folder (system.ResourceDirectory).
+	-- If the sound file is in the application documents directory, use system.DocumentsDirectory.
+	-- This function returns a handle to a sound file. In this case it's the filename_ used.
+	
 		if not filename_ then print("Error: Must provide a valid path for audio file."); printDebug() return false end
+		
 		if not cache[filename_] then
 			cache[filename_] = {}
 			cache[filename_].wavObj = soloud.createWavStream()
 			
+			-- Verify no issues on creating wavObj
 			if not cache[filename_].wavObj then print("Error: Could not create wav stream."); printDebug() return false end
-			if not cache[filename_].wavObj:load(filename_) then print("Error: Could not load audio file:", filename_); printDebug() return false end
+			
+			-- Get final path for debug output
+			local filePath = baseDir_ and system.pathForFile("", baseDir_) .. "\\" .. filename_ or filename_ 
+			if not cache[filename_].wavObj:load(filename_, baseDir_) then print("Error: Could not load audio file:", filePath); printDebug() return false end
 		end
+		-- Return filename_ as handle
 		return filename_
 	end
 	
@@ -464,10 +476,10 @@ local M = {}
 		if not cache[filename_] then
 			cache[filename_] = {}
 			cache[filename_].wavObj = soloud.createWavStream()
-
 			if not cache[filename_].wavObj then print("Error: Could not create wav object."); printDebug() return false end
 			if not cache[filename_].wavObj:loadMem(data_[1]) then print("Error: Could not load audio file:", filename_); printDebug() return false end
 		end
+		-- Return filename_ as handle
 		return filename_
 	end
 
