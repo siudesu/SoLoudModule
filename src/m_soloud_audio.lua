@@ -1,5 +1,5 @@
 --  SoLoud Module
---  Last Revision: 2023.06.01
+--  Last Revision: 2023.06.02
 --	Lua version: 5.1
 --	License: MIT
 --	Copyright <2023> <siu>
@@ -11,10 +11,9 @@
 	not implemented from the original audio API (see below on "What to know").
 
 	SoLoud provides a lot more features than Solar2D's audio API, but none have been included here (yet?).
-	The biggest perk with using this module is the ability to bundle audio files with Binary Archive and load them
-	directly from a created archive.
+	The biggest perk with using this module is the ability to load audio files bundled with Binary Archive.
 
-	SoLoud plugin is currently available only on Windows build.
+	SoLoud plugin is available on most platforms, excluding Linux and Nintendo Switch.
 
 	Requirements:
 		Add SoLoud plugin to Solar2D project in build.settings file:
@@ -42,10 +41,10 @@
 	 1. Solar2D's audio API works via a channel/track system. A single audio takes up a single channel.
 			Channels are not shared, thus any attempt to play an audio on a busy (playing or paused audio) channel will fail.
 
-	 3. Solar2D's framework is set to a 32 audio channels/tracks limit. For compliance, this module also simulates a 32 channels/tracks system.
-			This limit is a soft cap and can be changed if desired. A higher value will not (should not) break the workflow.
+	 2. Solar2D's framework is set to a 32 channels/tracks limit. For compliance, this module also simulates a 32 channels/tracks system.
+			However, this limit is a soft cap and can be changed if desired. A higher or lower value will not (should not) break the workflow.
 
-	 4. In order to avoid using timers in this module the following are not implemented from the original audio API:
+	 3. In order to avoid using timers in this module the following are not implemented from the original audio API:
 		-- stopWithDelay() ; This is just a timer that stops audio after the specified time has elapsed. The same can be accomplished outside of the module with a timer and AUDIO.stop();
 		-- fadeOut() ; This is the same as fade() except it also frees the channel. This can be accomplished outside of the module with fade() and a timer to AUDIO.stop() the audio.
 ]]
@@ -94,6 +93,9 @@ local M = {}
 	end
 	
 	local function clearChannel(channel_)
+	-- Clears a single channel.
+	-- `channel_` must be provided, and must be a number.
+
 		if channel_ <= 0 or channel_ > totalChannels then return false end
 		local channelData = channels[channel_]
 		-- nil the object reference
@@ -109,14 +111,14 @@ local M = {}
 		channelData.state = STATE.INACTIVE
 	end
 	
-	local function clearAllChannels(filename_)
-		-- Clears all channels if no filename_ is provided.
-		-- Clears all channels where the filename_ is currently assign.
-		
+	local function clearChannelsByFilename(filename_)
+	-- Clears all channels if `filename_` is not provided.
+	-- Clears channels where `filename_` is currently assigned.
+
 		if filename_ then -- clear channels assigned with filename_
 			for i=1, totalChannels do
 				if channels[i].fileName == filename_ then
-					channels[i].wavObj:stop()	-- stop in case it's still playing
+					channels[i].wavObj:stop()	-- stop in case it's playing
 					clearChannel(i)
 				end
 			end
@@ -125,13 +127,14 @@ local M = {}
 		
 		-- Else, clear all channels
 		for i=1, totalChannels do
-			channels[i].wavObj:stop()	-- stop audio track in case it's still playing
+			channels[i].wavObj:stop()	-- stop audio track in case it's playing
 			clearChannel(i)
 		end
 	end
 	
 	local function getNextAvailableChannel(startFrom_)
-		-- Note: Returns the available channel number, else returns false if none found.
+	-- Returns the available channel number. 
+	-- Returns `false` if no available channel found.
 		
 		-- Loop through the channels to find one currently not in use and not reserved.
 		local from = startFrom_ >= 1 and startFrom_ or 1
@@ -151,16 +154,17 @@ local M = {}
 	-------------------------------------
 	function M.dispose(fileName_)
 	-- Solar2D API: audio.dispose( audioHandle )
-		
-	-- Note: Destroying the audio will also stop the audio.
-	-- !Unlike the audio API, it is possible to destroy (without errors) an audio while it's already playing.
-		
+	-- Destroying the audio will also stop the audio.
+	-- Unlike the original audio API, it is possible to destroy (without errors) an audio while playing.
+
+		if not fileName_ then print("Error: Must provide valid audioHandle."); printDebug() return false end
+
 		-- Destroy audio if it exists.
 		if cache[fileName_] then cache[fileName_].wavObj:destroy() end
-		
-		-- All channels that were playing the audio will be clear.
-		clearAllChannels(fileName_)
-		
+
+		-- Clear all channels assigned with this audio.
+		clearChannelsByFilename(fileName_)
+
 		-- Clear cache.
 		cache[fileName_] = nil
 	end
@@ -172,42 +176,53 @@ local M = {}
 	-- Solar2D API: audio.fade( [ { [channel=c] [, time=t] [, volume=v ] } ] ) ; ( { channel=1, time=5000, volume=0.5 } )
 	-- The audio will continue playing after the fade completes.
 	-- When you fade the volume, you are changing the volume of the channel.
-	-- Volume levels are still clamped by min/maxVolume
+	-- Volume levels are still clamped by min/max volume.
+	-- This function returns the total number of channels fade was actually applied to.
 
 		local o = options_
 		if not o then -- apply default values
 			o = {}
-			o.channel = 0 -- Specify 0 to apply fade to all channels.
+			o.channel = 0 -- Apply fade to all channels.
 			o.volume = 0
 			o.time = 1000
-		else
+		else -- fill in any missing values with default values
 			o.channel = options_.channel or 0
 			o.volume = options_.volume or 0
 			o.time = options_.time or 1000
 		end
-		
-		-- Convert time to SoLoud's expected value
-		o.time = o.time * 0.001
 
-		if o.channel == 0 then -- fade all
+		-- Convert time to SoLoud specific value (seconds)
+		o.time = o.time * 0.001
+		
+		local counter = 0
+		if o.channel == 0 then -- fade all channels
 			for i=1, totalChannels do
 				if channels[i].fileName then -- if there's an audio object assigned
 					local channelData = channels[i]
+					-- These need to be calculated per channel as each channel can have its own max/min volume.
 					channelData.volume = (( o.volume > channelData.maxVolume ) and channelData.maxVolume ) or (( o.volume < channelData.minVolume ) and channelData.minVolume) or o.volume
-					if channelData.wavObj then soloudCore:fadeVolume(channelData.handleID, channelData.volume, o.time) end -- fade its audio 
+					if channelData.wavObj then
+						soloudCore:fadeVolume(channelData.handleID, channelData.volume, o.time)-- fade its audio 
+						counter = counter + 1
+					end 
 				end
 			end
-			return true
+			return counter
+		end
+
+		-- Else, fade the specified channel if active.
+		local channelData = channels[o.channel]
+		if channels[o.channel].state ~= STATE.INACTIVE then
+			channelData.volume = (( o.volume > channelData.maxVolume ) and channelData.maxVolume ) or (( o.volume < channelData.minVolume ) and channelData.minVolume) or o.volume
+			soloudCore:fadeVolume(channelData.handleID, channelData.volume, o.time)
+			return 1
 		end
 		
-		-- Else, fade the specified channel.
-		local channelData = channels[o.channel]
-		channelData.volume = (( o.volume > channelData.maxVolume ) and channelData.maxVolume ) or (( o.volume < channelData.minVolume ) and channelData.minVolume) or o.volume
-		soloudCore:fadeVolume(channelData.handleID, channelData.volume, o.time)
+		return 0
 	end
 
 	-------------------------------------
-	-- Fade Out
+	-- Fade Out ; NOT USED - KEPT FOR REFERENCE
 	-------------------------------------
 	function M.fadeOut__(options_)
 	-- Solar2D API: audio.fadeOut( [ { [channel=1] [, time=1000] } ] )
@@ -241,9 +256,12 @@ local M = {}
 	-- Solar2D API: audio.findFreeChannel( [ startChannel ] )
 	-- Search will increase upwards from this channel. 0 or no parameter begins searching at the lowest possible value.
 	-- The search does not include reserved channels.
+		
 		local startChannel = startChannel_ or 0
-			-- Returns 0 if no available channel found, else it returns next available channel.
-			return getNextAvailableChannel(startChannel) or 0
+		if startChannel > totalChannels or startChannel < 0 then print("Error: Audio channel not in range."); printDebug() return false end
+		
+		-- Return 0 if no available channel found, else return next available channel.
+		return getNextAvailableChannel(startChannel) or 0
 	end
 
 	-------------------------------------
@@ -257,18 +275,23 @@ local M = {}
 		if not cache[filename_] then print("Error: Audio not found, is it loaded?"); printDebug() return false end
 		if not cache[filename_].wavObj then print("Error: Audio not found, is it loaded?"); printDebug() return false end
 		
-		-- Return converted value; from SoLouds (seconds) to Solar2D (milliseconds)
+		-- Return converted value from SoLoud (seconds) to Solar2D (milliseconds)
 		return m_round(cache[filename_].wavObj:getLength() * 1000)
 	end
 	
 	-------------------------------------
 	-- Get Max Volume
 	-------------------------------------
-	function M.getMaxVolume()
+	function M.getMaxVolume(options_)
 	-- Solar2D API: audio.getMaxVolume( { channel=c } )
 	-- Specifying 0 will return the average volume across all channels.
 	
-		if not options_ then	-- get average
+		if not options_ or not options_.channel then print("Error: Must provide a valid value for channel"); printDebug() return false end
+	
+		local channel = options_.channel
+		if channel > totalChannels or channel < 0 then print("Error: Audio channel not in range."); printDebug() return false end
+	
+		if channel == 0 then	-- get average
 			local sum = 0
 			for i=1, totalChannels do sum = sum + channels[i].maxVolume end
 
@@ -277,9 +300,6 @@ local M = {}
 		end
 		
 		-- Else, get volume for specified channel
-		local channel = options_.channel
-		if channel > totalChannels or channel < 0 then print("Error: Audio channel not in range."); printDebug() return false end
-
 		return channels[channel].maxVolume
 	end
 	
@@ -289,30 +309,41 @@ local M = {}
 	function M.getMinVolume(options_)
 	-- Solar2D API: audio.getMinVolume( { channel=1 } )
 	-- Specifying 0 will return the average volume across all channels.
-	
-		if not options_ then	-- get average
+
+		if not options_ or not options_.channel then print("Error: Must provide a valid value for channel"); printDebug() return false end
+
+		local channel = options_.channel
+		if channel > totalChannels or channel < 0 then print("Error: Audio channel not in range."); printDebug() return false end
+
+		if channel == 0 then	-- get average
 			local sum = 0
 			for i=1, totalChannels do sum = sum + channels[i].minVolume end
 
 			-- Calculate the sum of numbers
 			return sum / totalChannels
 		end
-		
-		-- Else, get volume for specified channel
-		local channel = options_.channel
-		if channel > totalChannels or channel < 0 then print("Error: Audio channel not in range."); printDebug() return false end
 
+		-- Else, get volume for specified channel
 		return channels[channel].minVolume
 	end
 	
 	-------------------------------------
-	-- Fade Out
+	-- Get Volume
 	-------------------------------------
 	function M.getVolume(options_)
 	-- Solar2D API: audio.getVolume( { channel=1 } )
 	-- Specifying 0 will return the average volume across all channels.
+	-- Returns master volume if no parameters are given.
 	
-		if not options_ then	-- get average
+		-- Return master volume
+		if not options_ then return masterVolume end
+	
+		-- Sanity check
+		if not options_.channel or type(options_.channel) ~= "number" then print("Error: Must provide a valid value for `channel`"); printDebug() return false end
+		if options_.channel > totalChannels or options_.channel < 0 then print("Error: Audio channel not in range."); printDebug() return false end
+	
+		-- Get average volume
+		if options_.channel == 0 then	-- get average
 			local sum = 0
 			for i=1, totalChannels do sum = sum + channels[i].volume end
 
@@ -331,6 +362,13 @@ local M = {}
 	-- Is Channel Active
 	-------------------------------------
 	function M.isChannelActive(channel_)
+	-- Solar2D API: audio.isChannelActive( channel )
+	-- Returns true if the specified channel is currently playing or paused; false if otherwise.
+		
+		-- Sanity check
+		if not channel_ or type(channel_) ~= "number" then print("Error: Must provide a valid value for `channel`"); printDebug() return false end
+		if channel_ > totalChannels or channel_ < 0 then print("Error: Audio channel not in range."); printDebug() return false end
+
 		return channels[channel_].state == STATE.PLAYING or channels[channel_].state == STATE.PAUSED
 	end
 	
@@ -338,6 +376,13 @@ local M = {}
 	-- Is Channel Paused
 	-------------------------------------
 	function M.isChannelPaused(channel_)
+	-- Solar2D API: audio.isChannelPaused( channel )
+	-- Returns true if the specified channel is currently paused; false if not.
+	
+		-- Sanity check
+		if not channel_ or type(channel_) ~= "number" then print("Error: Must provide a valid value for `channel`"); printDebug() return false end
+		if channel_ > totalChannels or channel_ < 0 then print("Error: Audio channel not in range."); printDebug() return false end
+
 		return channels[channel_].state == STATE.PAUSED
 	end
 
@@ -345,17 +390,33 @@ local M = {}
 	-- Is Channel Playing
 	-------------------------------------
 	function M.isChannelPlaying(channel_)
+	-- Solar2D API: audio.isChannelPlaying( channel )
+	-- Returns true if the specified channel is currently playing; false if otherwise.
+		
+		-- Sanity check
+		if not channel_ or type(channel_) ~= "number" then print("Error: Must provide a valid value for `channel`"); printDebug() return false end
+		if channel_ > totalChannels or channel_ < 0 then print("Error: Audio channel not in range."); printDebug() return false end
+
 		return channels[channel_].state == STATE.PLAYING
 	end
 	
 	-------------------------------------
 	-- Load Sound
 	-------------------------------------
-	function M.loadSound(filename_)
+	function M.loadSound(filename_, baseDir_)
+	-- Solar2D API: audio.loadSound( audiofileName [, baseDir ]  )
+	-- By default sound files are expected to be in the project folder (system.ResourceDirectory).
+	-- If the sound file is in the application documents directory, use system.DocumentsDirectory.
+
 		if not filename_ then print("Error: Must provide a valid path for audio file."); printDebug() return false end
+		
+		-- Load audio if not already loaded.
 		if not cache[filename_] then
 			cache[filename_] = {}
 			cache[filename_].wavObj = soloud.createWav()
+			
+			-- Create 
+			local filePath = baseDir_ and baseDir_ .. "/" .. filename_ or filename_
 			
 			if not cache[filename_].wavObj then print("Error: Could not create wav object."); printDebug() return false end
 			if not cache[filename_].wavObj:load(filename_) then print("Error: Could not load audio file:", filename_); printDebug() return false end
@@ -517,7 +578,7 @@ local M = {}
 	-- 0 will un-reserve all channels.
 	
 		if not channels_ or type(channels_) ~= "number" then print("Error: Must provide a valid value for `channels`"); printDebug() return false end
-		if channels_ > totalChannels or channels_ < 0 then print("Error: Channel value not in range."); printDebug() return false end
+		if channels_ > totalChannels or channels_ < 0 then print("Error: Audio channel not in range."); printDebug() return false end
 		
 		if channels_ == 0 then -- un-reserve all channels
 			for i=1, totalChannels do
@@ -670,10 +731,29 @@ local M = {}
 	-- Set Volume
 	-------------------------------------
 	function M.setVolume(volume_, options_)
-	-- Solar2D API: audio.setVolume( 0.75, { channel=1 } ) 
+	-- Solar2D API: audio.setVolume( 0.75, { channel=1 } )
+	-- Valid volume numbers range from 0.0 to 1.0, where 1.0 is the maximum value.
+	-- Sets the volume either for a specific channel, or sets the master volume.
+	-- Omitting options_ parameter entirely sets the master volume which is different than the channel volume.
+	-- Specify channel=0 to apply the volume to all channels individually.
+	-- This function returns true on success, or false on failure.
+		
+		-- Check valid volume_ value.
+		if not volume_ or type(volume_) ~= "number" then print("Error: Must provide a valid `volume` value."); printDebug() return false end
 
-		-- If options_ is not provided then all channels are affected individually.
-		if not options_ then  
+		-- Apply volume to master volume
+		if not options_ then 
+			masterVolume = volume_
+			soloudCore:setGlobalVolume(masterVolume) 
+			return true 
+		end
+
+		-- Check valid channel value.
+		local channel = options_.channel
+		if not channel or type(channel) ~= "number" then print("Error: Must provide a valid `channel` value."); printDebug() return false end
+
+		-- Apply volume to individual channels.
+		if channel == 0 then
 			for i=1, totalChannels do
 				local channelData = channels[i]
 					channelData.volume = (( volume_ > channelData.maxVolume ) and channelData.maxVolume ) or (( volume_ < channelData.minVolume ) and channelData.minVolume) or volume_
@@ -681,19 +761,17 @@ local M = {}
 				-- if there's an audio object assigned then apply the new volume level
 				if channelData.wavObj then soloudCore:setVolume(channelData.handleID, channelData.volume) end
 			end
-			return
+			return true
 		end
 
-		-- If options_.channel == 0 then the master volume is updated.
-		masterVolume = volume_
-		if options_.channel == 0 then soloudCore:setGlobalVolume(masterVolume) ; return end
-
-		-- Else, update the specified channel.
-		local channelData = channels[options_.channel]
+		-- Else, apply volume to specified channel.
+		local channelData = channels[channel]
 		channelData.volume = (( volume_ > channelData.maxVolume ) and channelData.maxVolume ) or (( volume_ < channelData.minVolume ) and channelData.minVolume) or volume_
 
 		-- If there's an audio object assigned then apply the new volume level.
 		if channelData.wavObj then soloudCore:setVolume(channelData.handleID, channelData.volume) end
+		
+		return true
 	end
 	
 	-------------------------------------
@@ -717,7 +795,7 @@ local M = {}
 	
 		-- Do nothing else if channel is not valid.
 		if type(channel_) ~= "number" then print("Error: Must provide a valid channel value."); printDebug() return false end
-		if channel_ < 1 or channel_ > totalChannels then print("Error: Channel value not in range."); printDebug()  return false end
+		if channel_ < 1 or channel_ > totalChannels then print("Error: Audio channel not in range."); printDebug()  return false end
 
 		-- Else, clear the specified channel if active.
 		if channels[channel_].state ~= STATE.INACTIVE then
@@ -729,7 +807,7 @@ local M = {}
 	end
 
 	-------------------------------------
-	-- Stop With Delay
+	-- Stop With Delay ; NOT USED - KEPT FOR REFERENCE
 	-------------------------------------
 	function M.stopWithDelay__(duration_, options_)
 	-- Solar2D API: audio.stopWithDelay( duration [, options ] )
