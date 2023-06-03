@@ -690,6 +690,7 @@ local M = {}
 	function M.setMaxVolume( volume_, options_ )
 	-- Solar2D API: audio.setMaxVolume( 0.75, { channel=1 } )
 	-- Specify 0 to apply the max volume to all channels.
+	-- There is no max volume for the master volume.
 
 		if not volume_ then print("Error: Must provide a valid value for volume"); printDebug() return false end
 		
@@ -721,8 +722,9 @@ local M = {}
 	-- Set Min Volume
 	-------------------------------------
 	function M.setMinVolume( volume_, options_ )
-	-- Solar2D API: audio.setMaxVolume( 0.75, { channel=1 } )
-	-- Specify 0 to apply the max volume to all channels.
+	-- Solar2D API: audio.setMinVolume( 0.75, { channel=1 } )
+	-- Specify 0 to apply the min volume to all channels.
+	-- There is no min volume for the master volume.
 
 		if not volume_ then print("Error: Must provide a valid value for volume"); printDebug() return false end
 		
@@ -850,9 +852,11 @@ local M = {}
 	end
 
 
-	---- New Functions ------------------------------------------------------------
+	---- Extra Functions ------------------------------------------------------------
 
-
+	-------------------------------------
+	-- Set Pitch
+	-------------------------------------
 	function M.setPitch(channel_, pitch_)
 	-- al.PITCH value is used to control the playback speed and pitch of audio source together.
 	-- SoLoud's equivalent would be setSamplerate(); affects both the speed and the pitch of the audio.
@@ -861,8 +865,11 @@ local M = {}
 		soloudCore:setSamplerate(channels[channel_].handleID, channels[channel_].sampleRate * pitch_);
 	end
 
+	-------------------------------------
+	-- Set Speed
+	-------------------------------------
 	function M.setSpeed(channel_, playSpeed_)
-	-- Changes playback speed.
+	-- Changes playback speed without changing speed, though it may sound the same.
 
 		if not channels[channel_] then print("Error: Audio handle not found: " .. tostring(channel_)); printDebug() return false end
 		soloudCore:setRelativePlaySpeed(channels[channel_].handleID, playSpeed_)

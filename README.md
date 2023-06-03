@@ -85,33 +85,40 @@ AUDIO.play( SFX1 )
 
 ### Function List - same as [Solar2D audio API](https://docs.coronalabs.com/api/library/audio/index.html):
 ```
-MODULE.dispose()
-MODULE.fade()
-MODULE.findFreeChannel()
-MODULE.getDuration()
-MODULE.getMaxVolume()
-MODULE.getMinVolume()
-MODULE.getVolume()
-MODULE.isChannelActive()
-MODULE.isChannelPaused()
-MODULE.isChannelPlaying()
-MODULE.loadSound()
-MODULE.loadStream()
-MODULE.pause()
-MODULE.play()
-MODULE.reserveChannels()
-MODULE.resume()
-MODULE.rewind()
-MODULE.seek()
-MODULE.setMaxVolume()
-MODULE.setMinVolume()
-MODULE.setVolume()
-MODULE.stop()
+MODULE.dispose( audioHandle )
+MODULE.fade( { channel=num, time=num, volume=num } )
+MODULE.findFreeChannel( startChannel )
+MODULE.getDuration( audioHandle )
+MODULE.getMaxVolume( { channel=num } )
+MODULE.getMinVolume( { channel=num } )
+MODULE.getVolume( { channel=num } )
+MODULE.isChannelActive( channel )
+MODULE.isChannelPaused( channel )
+MODULE.isChannelPlaying( channel )
+MODULE.loadSound( audioFileName )
+MODULE.loadStream( audioFileName )
+MODULE.pause( channel )
+MODULE.play( audioHandle, { channel=num, loops=num, duration=num, fadein=num, onComplete=function, pitch=num } )
+MODULE.reserveChannels( channels )
+MODULE.resume( channel )
+MODULE.rewind( audioHandle or { channel=num } )
+MODULE.seek( time, audioHandle or { channel=num } )
+MODULE.setMaxVolume( volume, { channel=num } )
+MODULE.setMinVolume( volume, { channel=num } )
+MODULE.setVolume( volume, { channel=num } )
+MODULE.stop( channel )
 ```
-### Functions - Binary Archive
+
+### Extra Audio Functions:
 ```
-MODULE.loadSoundFromArchive.(filename_, data_)
-MODULE.loadStreamFromArchive(filename_, data_)
+MODULE.setPitch( channel, pitchValue )
+MODULE.setSpeed( channel, speedValue )
+```
+
+### Binary Archive Functions
+```
+MODULE.loadSoundFromArchive.( filename, data )
+MODULE.loadStreamFromArchive( filename, data )
 ```
 
 ### Properties (Read Only):
@@ -121,12 +128,6 @@ MODULE.totalChannels
 MODULE.unreservedFreeChannels
 MODULE.unreservedUsedChannels
 MODULE.usedChannels
-```
-
-### Extra Functions:
-```
-MODULE.setPitch(channel, pitchValue)
-MODULE.setSpeed(channel, speedValue)
 ```
 
 ---
