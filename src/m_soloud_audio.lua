@@ -1,5 +1,5 @@
 --  SoLoud Module
---  Last Revision: 2023.06.02
+--  Last Revision: 2023.06.16
 --	Lua version: 5.1
 --	License: MIT
 --	Copyright <2023> <siu>
@@ -96,9 +96,27 @@ local M = {}
 	local function clearChannel(channel_)
 	-- Clears a single channel.
 	-- `channel_` must be provided, and must be a number.
-
 		if channel_ <= 0 or channel_ > totalChannels then return false end
 		local channelData = channels[channel_]
+		-- nil the object reference
+		channelData.wavObj = nil 
+
+		-- remove file reference
+		channelData.fileName = nil
+		
+		-- clear handle id
+		channelData.handleID = nil
+
+		-- clear channel state
+		channelData.state = STATE.INACTIVE
+	end
+	
+	local function clearChannelByReference(table_)
+		-- Clears channel by reference in the `channels` table.
+		-- The expected data is basically `channels[index]` where `index` is the channel number.
+		-- This is currently only used on the callback from M.play().
+
+		local channelData = table_
 		-- nil the object reference
 		channelData.wavObj = nil 
 
@@ -558,12 +576,12 @@ local M = {}
 		local onComplete
 		if o.onComplete then
 			onComplete = function() 
-				clearChannel(cachedData.channel)
+				clearChannelByReference(channelData)
 				o.onComplete()
 			end
 		else
 			onComplete = function() 
-				clearChannel(cachedData.channel)
+				clearChannelByReference(channelData)
 			end
 		end
 		
