@@ -111,7 +111,7 @@ MODULE.setSpeed( channel, speedValue )
 
 ### Binary Archive Functions
 ```
-MODULE.loadSoundFromArchive.( filename, data )
+MODULE.loadSoundFromArchive( filename, data )
 MODULE.loadStreamFromArchive( filename, data )
 ```
 
