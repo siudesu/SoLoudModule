@@ -1,5 +1,5 @@
 --  SoLoud Module
---  Last Revision: 2023.06.16
+--  Last Revision: 2024.03.12
 --	Lua version: 5.1
 --	License: MIT
 --	Copyright <2023> <siu>
@@ -13,7 +13,7 @@
 	SoLoud provides a lot more features than Solar2D's audio API, but none have been included here (yet?).
 	The biggest perk with using this module is the ability to load audio files bundled with Binary Archive.
 
-	SoLoud plugin is available on most platforms, excluding Linux and Nintendo Switch.
+	*SoLoud plugin is available on most platforms, excluding Linux and Nintendo Switch.*
 
 	Requirements:
 		Add SoLoud plugin to Solar2D project in build.settings file:
@@ -41,12 +41,15 @@
 	 1. Solar2D's audio API works via a channel/track system. A single audio takes up a single channel.
 			Channels are not shared, thus any attempt to play an audio on a busy (playing or paused audio) channel will fail.
 
-	 2. Solar2D's framework is set to a 32 channels/tracks limit. For compliance, this module also simulates a 32 channels/tracks system.
-			However, this limit is a soft cap and can be changed if desired. A higher or lower value will not (should not) break the workflow.
+	 2. Solar2D's framework is set to a 32 channels/tracks limit. This module simulates a 22 channels/tracks system.
+			Although, this limit is a soft cap and can be changed as desired, a higher value of 22 has been noted to cause audio silence when used simultaneously.
 
-	 3. In order to avoid using timers in this module the following are not implemented from the original audio API:
+	 3. In order to avoid hidden side effects by using timer or transition library, in this module the following are not implemented from the original audio API:
 		-- stopWithDelay() ; This is just a timer that stops audio after the specified time has elapsed. The same can be accomplished outside of the module with a timer and AUDIO.stop();
 		-- fadeOut() ; This is the same as fade() except it also frees the channel. This can be accomplished outside of the module with fade() and a timer to AUDIO.stop() the audio.
+
+	 4. It's worth noting that the onComplete callback gets called one frame after audio finishes or after stop() is called.
+
 ]]
 
 
@@ -63,7 +66,7 @@ local debugMode = true
 local M = {}
 
 	-- Initialized @ module load.
-	local totalChannels = 32	-- this is the soft cap for channels/tracks
+	local totalChannels = 22	-- this is the soft cap for channels/tracks
 	local cache = {}	-- keep track of loaded files so they are only loaded once
 	local STATE = { ["INACTIVE"] = 0, ["PLAYING"] = 1, ["PAUSED"] = 2 }
 	local soloudCore = soloud.createCore{ flags = { "CLIP_ROUNDOFF" } }
@@ -73,6 +76,7 @@ local M = {}
 	local channels = {}
 	for i=1, totalChannels do -- initialize channel state
 		channels[i] = {
+			index = i,
 			volume = masterVolume,
 			minVolume = minVolume,
 			maxVolume = maxVolume,
@@ -86,10 +90,11 @@ local M = {}
 
 	-- Internal use only ----------------------------------------------------------
 
-	local function printDebug()
+	local function printDebug(msg_)
 		if not debugMode then return end
 		local info = debug.getinfo(3)
 		local file, line, funcName = s_gsub(info.source, "=",""), info.currentline, debug.getinfo(2, "n").name
+		print(msg_)
 		print("[SoLoud Module] Trace:\n\tFile: " .. file .. "\n\tLine: " .. line .. ", Function: " .. funcName)
 	end
 	
@@ -98,12 +103,12 @@ local M = {}
 	-- `channel_` must be provided, and must be a number.
 		if channel_ <= 0 or channel_ > totalChannels then return false end
 		local channelData = channels[channel_]
-		-- nil the object reference
-		channelData.wavObj = nil 
+		-- nil object reference
+		channelData.wavObj = nil
 
 		-- remove file reference
 		channelData.fileName = nil
-		
+
 		-- clear handle id
 		channelData.handleID = nil
 
@@ -117,12 +122,12 @@ local M = {}
 		-- This is currently only used on the callback from M.play().
 
 		local channelData = table_
-		-- nil the object reference
+		-- nil object reference
 		channelData.wavObj = nil 
 
 		-- remove file reference
 		channelData.fileName = nil
-		
+
 		-- clear handle id
 		channelData.handleID = nil
 
@@ -131,29 +136,20 @@ local M = {}
 	end
 	
 	local function clearChannelsByFilename(filename_)
-	-- Clears all channels if `filename_` is not provided.
-	-- Clears channels where `filename_` is currently assigned.
-
-		if filename_ then -- clear channels assigned with filename_
-			for i=1, totalChannels do
-				if channels[i].fileName == filename_ then
-					channels[i].wavObj:stop()	-- stop in case it's playing
-					clearChannel(i)
-				end
-			end
-			return true
-		end
-		
-		-- Else, clear all channels
+	-- Clear all channels if `filename_` is not provided.
+	-- Clear channels where `filename_` is currently assigned.
 		for i=1, totalChannels do
-			channels[i].wavObj:stop()	-- stop audio track in case it's playing
-			clearChannel(i)
+			if channels[i].fileName == filename_ then
+				if channels[i].wavObj then 
+					channels[i].wavObj:stop()	-- stop in case it's playing
+				end
+				clearChannel(i)
+			end
 		end
 	end
 	
 	local function getNextAvailableChannel(startFrom_)
-	-- Returns the available channel number. 
-	-- Returns `false` if no available channel found.
+	-- Returns the available channel number, else returns `false`.
 		
 		-- Loop through the channels to find one currently not in use and not reserved.
 		local from = startFrom_ >= 1 and startFrom_ or 1
@@ -175,16 +171,16 @@ local M = {}
 	-- Solar2D API: audio.dispose( audioHandle )
 	-- Destroying the audio will also stop the audio.
 	-- Unlike the original audio API, it is possible to destroy (without errors) an audio while playing.
-
-		if not fileName_ then print("Error: Must provide valid audioHandle."); printDebug() return false end
-
-		-- Destroy audio if it exists.
-		if cache[fileName_] then cache[fileName_].wavObj:destroy() end
-
-		-- Clear all channels assigned with this audio.
+		if not fileName_ then printDebug("Error: Must provide valid audioHandle.") return false end
+		if not cache[fileName_] then printDebug("Error: No audioHandle found for: " .. fileName_) return false end
+		
+		-- clear all channels assigned with this audio.
 		clearChannelsByFilename(fileName_)
+		
+		-- destroy audio obj
+		cache[fileName_].wavObj:destroy()
 
-		-- Clear cache.
+		-- clear cache.
 		cache[fileName_] = nil
 	end
 
@@ -241,34 +237,6 @@ local M = {}
 	end
 
 	-------------------------------------
-	-- Fade Out ; NOT USED - KEPT FOR REFERENCE
-	-------------------------------------
-	function M.fadeOut__(options_)
-	-- Solar2D API: audio.fadeOut( [ { [channel=1] [, time=1000] } ] )
-	-- Stops a playing sound in a specified amount of time and fades to min volume while doing it.
-	-- The audio will stop at the end of the time and the channel will be freed. 
-	-- Specify 0 to fade out all channels.
-
-		local o = options_
-		if not o then
-			o = {}
-			o.channel = 0
-			o.time = 1000 -- default fade out time
-		end
-		
-		local channel = o.channel
-		if not channel then print("Error: Must provide valid channel value."); printDebug() return false end
-		if channel > totalChannels or channel < 0 then print("Error: Audio channel not in range."); printDebug() return false end
-		if not o.time then print("Error: Must provide valid time value."); printDebug() return false end
-		
-		if o.time > 0 then
-			M.fade({channel=channel, time=o.time, volume=0})
-			soloudCore:scheduleStop(channels[channel].handleID, o.time * 0.001);
-			timer.performWithDelay(o.time, function() clearChannel(channel) end)
-		end
-	end
-	
-	-------------------------------------
 	-- Find Free Channel
 	-------------------------------------
 	function M.findFreeChannel(startChannel_)
@@ -277,10 +245,11 @@ local M = {}
 	-- The search does not include reserved channels.
 		
 		local startChannel = startChannel_ or 0
-		if startChannel > totalChannels or startChannel < 0 then print("Error: Audio channel not in range."); printDebug() return false end
+		if startChannel > totalChannels or startChannel < 0 then printDebug("Error: Audio channel not in range.") return false end
 		
 		-- Return 0 if no available channel found, else return next available channel.
-		return getNextAvailableChannel(startChannel) or 0
+		local freeChannel = getNextAvailableChannel(startChannel)
+		return freeChannel and freeChannel or 0
 	end
 
 	-------------------------------------
@@ -290,9 +259,9 @@ local M = {}
 	-- Solar2D API: audio.getDuration( audioHandle )
 	-- This function returns the total time in milliseconds of the audio resource.
 
-		if not filename_ then print("Error: Must provide a valid value for audioHandle"); printDebug() return false end
-		if not cache[filename_] then print("Error: Audio not found, is it loaded?"); printDebug() return false end
-		if not cache[filename_].wavObj then print("Error: Audio not found, is it loaded?"); printDebug() return false end
+		if not filename_ then printDebug("Error: Must provide a valid value for audioHandle.") return false end
+		if not cache[filename_] then printDebug("Error: Audio not found, is it loaded?") return false end
+		if not cache[filename_].wavObj then printDebug("Error: Audio not found, is it loaded?") return false end
 		
 		-- Return converted value from SoLoud (seconds) to Solar2D (milliseconds)
 		return m_round(cache[filename_].wavObj:getLength() * 1000)
@@ -305,10 +274,10 @@ local M = {}
 	-- Solar2D API: audio.getMaxVolume( { channel=c } )
 	-- Specifying 0 will return the average volume across all channels.
 	
-		if not options_ or not options_.channel then print("Error: Must provide a valid value for channel"); printDebug() return false end
+		if not options_ or not options_.channel then printDebug("Error: Must provide a valid value for channel.") return false end
 	
 		local channel = options_.channel
-		if channel > totalChannels or channel < 0 then print("Error: Audio channel not in range."); printDebug() return false end
+		if channel > totalChannels or channel < 0 then printDebug("Error: Audio channel not in range.") return false end
 	
 		if channel == 0 then	-- get average
 			local sum = 0
@@ -329,10 +298,10 @@ local M = {}
 	-- Solar2D API: audio.getMinVolume( { channel=1 } )
 	-- Specifying 0 will return the average volume across all channels.
 
-		if not options_ or not options_.channel then print("Error: Must provide a valid value for channel"); printDebug() return false end
+		if not options_ or not options_.channel then printDebug("Error: Must provide a valid value for channel.") return false end
 
 		local channel = options_.channel
-		if channel > totalChannels or channel < 0 then print("Error: Audio channel not in range."); printDebug() return false end
+		if channel > totalChannels or channel < 0 then printDebug("Error: Audio channel not in range.") return false end
 
 		if channel == 0 then	-- get average
 			local sum = 0
@@ -358,8 +327,8 @@ local M = {}
 		if not options_ then return masterVolume end
 	
 		-- Sanity check
-		if not options_.channel or type(options_.channel) ~= "number" then print("Error: Must provide a valid value for `channel`"); printDebug() return false end
-		if options_.channel > totalChannels or options_.channel < 0 then print("Error: Audio channel not in range."); printDebug() return false end
+		if not options_.channel or type(options_.channel) ~= "number" then printDebug("Error: Must provide a valid value for `channel`.") return false end
+		if options_.channel > totalChannels or options_.channel < 0 then printDebug("Error: Audio channel not in range.") return false end
 	
 		-- Get average volume
 		if options_.channel == 0 then	-- get average
@@ -372,7 +341,7 @@ local M = {}
 		
 		-- Else, get volume for specified channel
 		local channel = options_.channel
-		if channel > totalChannels or channel < 0 then print("Error: Audio channel not in range."); printDebug() return false end
+		if channel > totalChannels or channel < 0 then printDebug("Error: Audio channel not in range.") return false end
 
 		return channels[channel].volume
 	end
@@ -385,8 +354,8 @@ local M = {}
 	-- Returns true if the specified channel is currently playing or paused; false if otherwise.
 		
 		-- Sanity check
-		if not channel_ or type(channel_) ~= "number" then print("Error: Must provide a valid value for `channel`"); printDebug() return false end
-		if channel_ > totalChannels or channel_ < 0 then print("Error: Audio channel not in range."); printDebug() return false end
+		if not channel_ or type(channel_) ~= "number" then printDebug("Error: Must provide a valid value for `channel`.") return false end
+		if channel_ > totalChannels or channel_ < 0 then printDebug("Error: Audio channel not in range.") return false end
 
 		return channels[channel_].state == STATE.PLAYING or channels[channel_].state == STATE.PAUSED
 	end
@@ -399,8 +368,8 @@ local M = {}
 	-- Returns true if the specified channel is currently paused; false if not.
 	
 		-- Sanity check
-		if not channel_ or type(channel_) ~= "number" then print("Error: Must provide a valid value for `channel`"); printDebug() return false end
-		if channel_ > totalChannels or channel_ < 0 then print("Error: Audio channel not in range."); printDebug() return false end
+		if not channel_ or type(channel_) ~= "number" then printDebug("Error: Must provide a valid value for `channel`.") return false end
+		if channel_ > totalChannels or channel_ < 0 then printDebug("Error: Audio channel not in range.") return false end
 
 		return channels[channel_].state == STATE.PAUSED
 	end
@@ -413,8 +382,8 @@ local M = {}
 	-- Returns true if the specified channel is currently playing; false if otherwise.
 		
 		-- Sanity check
-		if not channel_ or type(channel_) ~= "number" then print("Error: Must provide a valid value for `channel`"); printDebug() return false end
-		if channel_ > totalChannels or channel_ < 0 then print("Error: Audio channel not in range."); printDebug() return false end
+		if not channel_ or type(channel_) ~= "number" then printDebug("Error: Must provide a valid value for `channel`.") return false end
+		if channel_ > totalChannels or channel_ < 0 then printDebug("Error: Audio channel not in range.") return false end
 
 		return channels[channel_].state == STATE.PLAYING
 	end
@@ -428,34 +397,69 @@ local M = {}
 	-- If the sound file is in the application documents directory, use system.DocumentsDirectory.
 	-- This function returns a handle to a sound file. In this case it's the filename_ used.
 
-		if not filename_ then print("Error: Must provide a valid path for audio file."); printDebug() return false end
+		if not filename_ then printDebug("Error: Must provide a valid path for audio file.") return false end
 		
 		-- Load audio if not already loaded.
 		if not cache[filename_] then
-			cache[filename_] = {}
-			cache[filename_].wavObj = soloud.createWav()
+			local cacheData = {}
+				cacheData.wavObj = soloud.createWav()
+				cacheData.channel = 0
 
-			-- Verify no issues on creating wavObj 
-			if not cache[filename_].wavObj then print("Error: Could not create wav object."); printDebug() return false end
+			if not cacheData.wavObj then printDebug("Error: Could not create wav object.") return false end
 
 			-- Get final path for debug output
 			local filePath = baseDir_ and system.pathForFile("", baseDir_) .. "\\" .. filename_ or filename_ 
-			if not cache[filename_].wavObj:load(filename_, baseDir_) then print("Error: Could not load audio file:", filePath); printDebug() return false end
+			if not cacheData.wavObj:load(filename_, baseDir_) then printDebug("Error: Could not load audio file: " .. filePath) return false end
+			cache[filename_] = cacheData
 		end
 		-- Return filename_ as handle
 		return filename_
 	end
 
 	-------------------------------------
+	-- WIP: Set Filter 
+	-------------------------------------
+	
+	function M.setFilter(handleID, params_)
+		local wavObj = cache[handleID].wavObj
+		
+		local custom = {}
+		local buffer      = params_.buffer or nil
+		local samples     = params_.samples or nil
+		local size        = params_.size or nil
+		local channels    = params_.channels or nil
+		local sample_rate = params_.sample_rate or nil
+		local time        = params_.time or nil
+		
+		
+		function custom:filter(buffer, samples, size, channels, sample_rate, time)
+			-- Custom filter logic goes here
+			print("Input:", buffer, samples, size, channels, sample_rate, time)
+			sample_rate = sample_rate * 0.5
+		
+		--	buffer:addAt(1,4000)
+		--	buffer:divideByN(1,3)
+			buffer:dup(300)
+		end
+		
+		cache[handleID].filter = soloud.createCustomFilter(custom)
+		
+		wavObj:setFilter(1, cache[handleID].filter)
+	end
+
+	-------------------------------------
 	-- Load Sound From Archive
 	-------------------------------------
 	function M.loadSoundFromArchive(filename_, data_)
-		if not filename_ then print("Error: Must provide a valid path for audio file."); printDebug() return false end
+		if not filename_ then printDebug("Error: Must provide a valid path for audio file.") return false end
+		if not data_ then printDebug("Error: Must provide audio data.") return false end
 		if not cache[filename_] then
-			cache[filename_] = {}
-			cache[filename_].wavObj = soloud.createWav()
-			if not cache[filename_].wavObj then print("Error: Could not create wav object."); printDebug() return false end
-			if not cache[filename_].wavObj:loadMem(data_[1]) then print("Error: Could not load audio file:", filename_); printDebug() return false end
+			local cacheData = {}
+				cacheData.wavObj = soloud.createWav()
+				cacheData.channel = 0
+			if not cacheData.wavObj then printDebug("Error: Could not create wav object.") return false end
+			if not cacheData.wavObj:loadMem(data_[1]) then printDebug("Error: Could not load audio file: " .. filename_) return false end
+			cache[filename_] = cacheData
 		end
 		-- Return filename_ as handle
 		return filename_
@@ -470,18 +474,18 @@ local M = {}
 	-- If the sound file is in the application documents directory, use system.DocumentsDirectory.
 	-- This function returns a handle to a sound file. In this case it's the filename_ used.
 
-		if not filename_ then print("Error: Must provide a valid path for audio file."); printDebug() return false end
+		if not filename_ then printDebug("Error: Must provide a valid path for audio file.") return false end
 
 		if not cache[filename_] then
-			cache[filename_] = {}
-			cache[filename_].wavObj = soloud.createWavStream()
-			
-			-- Verify no issues on creating wavObj
-			if not cache[filename_].wavObj then print("Error: Could not create wav stream."); printDebug() return false end
-			
+			local cacheData = {}
+				cacheData.wavObj = soloud.createWavStream()
+				cacheData.channel = 0
+			if not cacheData.wavObj then printDebug("Error: Could not create wav stream.") return false end
+
 			-- Get final path for debug output
 			local filePath = baseDir_ and system.pathForFile("", baseDir_) .. "\\" .. filename_ or filename_ 
-			if not cache[filename_].wavObj:load(filename_, baseDir_) then print("Error: Could not load audio file:", filePath); printDebug() return false end
+			if not cacheData.wavObj:load(filename_, baseDir_) then printDebug("Error: Could not load audio file: " .. filePath) return false end
+			cache[filename_] = cacheData
 		end
 		-- Return filename_ as handle
 		return filename_
@@ -491,12 +495,15 @@ local M = {}
 	-- Load Stream From Archive
 	-------------------------------------
 	function M.loadStreamFromArchive(filename_, data_)
-		if not filename_ then print("Error: Must provide a valid path for audio file."); printDebug() return false end
+		if not filename_ then printDebug("Error: Must provide a valid path for audio file.") return false end
+		if not data_ then printDebug("Error: Must provide audio data.") return false end
 		if not cache[filename_] then
-			cache[filename_] = {}
-			cache[filename_].wavObj = soloud.createWavStream()
-			if not cache[filename_].wavObj then print("Error: Could not create wav object."); printDebug() return false end
-			if not cache[filename_].wavObj:loadMem(data_[1]) then print("Error: Could not load audio file:", filename_); printDebug() return false end
+			local cacheData = {}
+				cacheData.wavObj = soloud.createWavStream()
+				cacheData.channel = 0
+			if not cacheData.wavObj then printDebug("Error: Could not create wav object.") return false end
+			if not cacheData.wavObj:loadMem(data_[1]) then printDebug("Error: Could not load audio file: " .. filename_) return false end
+			cache[filename_] = cacheData
 		end
 		-- Return filename_ as handle
 		return filename_
@@ -530,15 +537,15 @@ local M = {}
 	function M.play(filename_, options_)
 	-- Solar2D API: audio.play( audioHandle [, options ] ) ; options = { channel = 1, loops = -1, duration = 30000, fadein = 5000, onComplete = callbackListener }
 		
-		if not filename_ then print("Error: Must provide a valid audio file name."); printDebug() return false end
+		if not filename_ then printDebug("Error: Must provide a valid audio file name.") return false end
 
 		-- Check audio file has already been loaded.
 		local cachedData = cache[filename_]
-		if not cachedData then print("Error: Audio file must be loaded before playing: " .. filename_); printDebug() return false end
+		if not cachedData then printDebug("Error: Audio file must be loaded before playing: " .. filename_) return false end
 
 		-- Get options_ table.
 	 local o = options_
-		if not o then	-- assign default values
+		if not o then	-- create with default values 
 			o = {}
 			o.channel = 0 
 			o.loops = 0
@@ -546,7 +553,7 @@ local M = {}
 			o.fadein = 0
 			o.onComplete = nil
 			o.pitch = 1 -- regular
-		else
+		else -- assign default values for missing parameter
 			o.channel = options_.channel or 0
 			o.loops = options_.loops or 0
 			o.duration = options_.duration or 0
@@ -555,41 +562,52 @@ local M = {}
 			o.pitch = options_.pitch or 1
 		end
 
-		-- Verify options_ data.
-		cachedData.channel = ((o.channel > 0 and o.channel <= totalChannels) and o.channel or getNextAvailableChannel(0))
-		if not cachedData.channel then print("Error: No channels available to play audio."); printDebug() return false end
-		
-		local channelData = channels[cachedData.channel]
-		if channelData.fileName then print("Warning: Channel already in use."); printDebug() return false end -- this can trigger if channel is assigned manually.
+		-- get free channel
+		local freeChannel = ((o.channel > 0 and o.channel <= totalChannels) and o.channel or getNextAvailableChannel(0))
+		if not freeChannel then printDebug("Error: No channels available to play audio.") return false end
+
+		cachedData.channel = freeChannel
+
+		-- do not continue if channel is already in use
+		local channelData = channels[freeChannel]
+		if channelData.fileName then printDebug("Warning: Channel already in use.") return false end -- this can trigger if channel is assigned manually.
 
 		-- Assign channel values.
 		channelData.fileName = filename_
 		channelData.wavObj = cachedData.wavObj
 		channelData.state = STATE.PLAYING
 
-		-- Set looping.
+		-- set loop
 		cachedData.loops = o.loops or 0
 		if cachedData.loops > 0 then cachedData.wavObj:setLooping(cachedData.loops) end
 		if cachedData.loops == -1 then cachedData.wavObj:setLooping(true) end
-		
+
 		-- Piggyback onComplete to clean up channel.
 		local onComplete
 		if o.onComplete then
-			onComplete = function() 
-				clearChannelByReference(channelData)
-				o.onComplete()
+			onComplete = function(event_)
+					event_.name = "audio"
+					event_.channel = channelData.index
+					event_.handle = channelData.fileName
+				if event_.completed then
+					clearChannelByReference(channelData)
+				end
+				o.onComplete(event_)
 			end
 		else
-			onComplete = function() 
-				clearChannelByReference(channelData)
+			onComplete = function(event_)
+				event_.channel = channelData.index
+				if event_.completed then
+					clearChannelByReference(channelData)
+				end
 			end
 		end
-		
+
 		-- Set fade in.
 		cachedData.fadein = o.fadein or 0 
 		if cachedData.fadein > 0 then -- play with fade in effect
 			channelData.handleID = soloudCore:play( cachedData.wavObj, { volume = channelData.minVolume, onComplete = onComplete });
-			M.fade({channel=cachedData.channel, time=cachedData.fadein, volume=channelData.maxVolume})
+			M.fade({channel=freeChannel, time=cachedData.fadein, volume=channelData.maxVolume})
 		else	-- play normal
 			channelData.handleID = soloudCore:play( cachedData.wavObj, { volume = channelData.volume, onComplete = onComplete });
 		end
@@ -606,7 +624,7 @@ local M = {}
 			soloudCore:scheduleStop(channelData.handleID, cachedData.duration)
 		end
 
-		return cachedData.channel
+		return freeChannel
 	end
 	
 	-------------------------------------
@@ -617,8 +635,8 @@ local M = {}
 	-- If you pass 2 into this function, channels 1 and 2 will be reserved
 	-- 0 will un-reserve all channels.
 	
-		if not channels_ or type(channels_) ~= "number" then print("Error: Must provide a valid value for `channels`"); printDebug() return false end
-		if channels_ > totalChannels or channels_ < 0 then print("Error: Audio channel not in range."); printDebug() return false end
+		if not channels_ or type(channels_) ~= "number" then printDebug("Error: Must provide a valid value for `channels`.") return false end
+		if channels_ > totalChannels or channels_ < 0 then printDebug("Error: Audio channel not in range.") return false end
 		
 		if channels_ == 0 then -- un-reserve all channels
 			for i=1, totalChannels do
@@ -671,12 +689,12 @@ local M = {}
 		-- if options is a channel
 		if type(value_) == "table" then
 			local channel = value_.channel
-			if channel > totalChannels or channel < 0 then print("Error: Audio channel not in range."); printDebug() return false end
+			if channel > totalChannels or channel < 0 then printDebug("Error: Audio channel not in range.") return false end
 			if channels[channel].handleID then soloudCore:seek(channels[channel].handleID, 0); end
 		end
 		
 		-- Else, rewind by handle
-		if not cache[value_] then print("Error: Audio handle not found: " .. tostring(value_)); printDebug() return false end
+		if not cache[value_] then printDebug("Error: Audio handle not found: " .. tostring(value_)) return false end
 		if cache[value_].wavObj then soloudCore:seek(channels[cache[value_].channel].handleID, 0); end
 	end
 	
@@ -686,18 +704,25 @@ local M = {}
 	function M.seek(time_, value_)
 	-- Solar2D API: audio.seek( time [, audioHandle ] [, options ] )
 	-- Does not use the `options.channel` and `audioHandle` parameter in the same call.
+	--[[
+			For audio preloaded with audio.loadSound(), you may only seek using the options
+			table parameter containing a channel parameter. You may not seek using the audioHandle
+			parameter. This is because audio.loadSound() is optimized to share the audio data so 
+			you can play back multiple instances of the sound simultaneously (at different positions).
+			Seeking the underlying data complicates this optimization.
+	]]
 	
-		if not time_ then print("Error: Must provide a valid value for `time`"); printDebug() return false end
+		if not time_ then printDebug("Error: Must provide a valid value for `time`.") return false end
 		
 		-- if options is a channel
 		if type(value_) == "table" then
 			local channel = value_.channel
-			if channel > totalChannels or channel < 0 then print("Error: Audio channel not in range."); printDebug() return false end
+			if channel > totalChannels or channel < 0 then printDebug("Error: Audio channel not in range.") return false end
 			if channels[channel].handleID then soloudCore:seek(channels[channel].handleID, time_) return true end
 		end
 		
 		-- Else, seek by handle
-		if not cache[value_] then print("Error: Audio handle not found: " .. tostring(value_)); printDebug() return false end
+		if not cache[value_] then printDebug("Error: Audio handle not found: " .. tostring(value_)) return false end
 		if cache[value_].wavObj then soloudCore:seek(channels[cache[value_].channel].handleID, time_); end
 
 	end
@@ -710,7 +735,7 @@ local M = {}
 	-- Specify 0 to apply the max volume to all channels.
 	-- There is no max volume for the master volume.
 
-		if not volume_ then print("Error: Must provide a valid value for volume"); printDebug() return false end
+		if not volume_ then printDebug("Error: Must provide a valid value for volume") return false end
 		
 		local o = options_
 		if not o then  -- set volume for all channels
@@ -726,7 +751,7 @@ local M = {}
 		end
 
 		-- Else, adjust volume to specified channel
-		if o.channel > totalChannels or o.channel < 0 then print("Error: Audio channel not in range."); printDebug() return false end
+		if o.channel > totalChannels or o.channel < 0 then printDebug("Error: Audio channel not in range.") return false end
 		
 		local channelData = channels[o.channel]
 			channelData.maxVolume = volume_
@@ -744,7 +769,7 @@ local M = {}
 	-- Specify 0 to apply the min volume to all channels.
 	-- There is no min volume for the master volume.
 
-		if not volume_ then print("Error: Must provide a valid value for volume"); printDebug() return false end
+		if not volume_ then printDebug("Error: Must provide a valid value for volume") return false end
 		
 		local o = options_
 		if not o then  -- set volume for all channels
@@ -760,7 +785,7 @@ local M = {}
 		end
 
 		-- Else, adjust volume to specified channel
-		if o.channel > totalChannels or o.channel < 0 then print("Error: Audio channel not in range."); printDebug() return false end
+		if o.channel > totalChannels or o.channel < 0 then printDebug("Error: Audio channel not in range.") return false end
 		
 		local channelData = channels[o.channel]
 			channelData.maxVolume = volume_
@@ -782,7 +807,7 @@ local M = {}
 	-- This function returns true on success, or false on failure.
 		
 		-- Check valid volume_ value.
-		if not volume_ or type(volume_) ~= "number" then print("Error: Must provide a valid `volume` value."); printDebug() return false end
+		if not volume_ or type(volume_) ~= "number" then printDebug("Error: Must provide a valid `volume` value.") return false end
 
 		-- Apply volume to master volume
 		if not options_ then 
@@ -793,7 +818,7 @@ local M = {}
 
 		-- Check valid channel value.
 		local channel = options_.channel
-		if not channel or type(channel) ~= "number" then print("Error: Must provide a valid `channel` value."); printDebug() return false end
+		if not channel or type(channel) ~= "number" then printDebug("Error: Must provide a valid `channel` value.") return false end
 
 		-- Apply volume to individual channels.
 		if channel == 0 then
@@ -816,7 +841,7 @@ local M = {}
 		
 		return true
 	end
-	
+
 	-------------------------------------
 	-- Stop
 	-------------------------------------
@@ -826,47 +851,27 @@ local M = {}
 	-- Note: This function stops the audio, but also clears the channel/s, thus
 	-- once audio is stopped it cannot be resumed, rewind, or perform any channel related function.
 
-		-- If no channel is provided then all channels are affected.
-		if not channel_ then  
+		-- Clear all channels if no channel is provided.
+		if not channel_ then
 			for i=1, totalChannels do
 				-- if there's an audio object assigned then stop audio.
-				if channels[i].wavObj then channels[i].wavObj:stop() end -- stop audio
-				clearChannel(i) -- clear channel
+				if channels[i].wavObj then channels[i].wavObj:stop() end
+				clearChannel(i)
 			end
 			return true
 		end
-	
-		-- Do nothing else if channel is not valid.
-		if type(channel_) ~= "number" then print("Error: Must provide a valid channel value."); printDebug() return false end
-		if channel_ < 1 or channel_ > totalChannels then print("Error: Audio channel not in range."); printDebug()  return false end
 
-		-- Else, clear the specified channel if active.
+		-- Do nothing else if channel value is out of scope.
+		if type(channel_) ~= "number" then printDebug("Error: Must provide a valid channel value.") return false end
+		if channel_ < 1 or channel_ > totalChannels then printDebug("Error: Audio channel not in range.")  return false end
+
+		-- Clear specified channel if it's active.
 		if channels[channel_].state ~= STATE.INACTIVE then
 			cache[channels[channel_].fileName].wavObj:stop()	-- stop audio
 			clearChannel(channel_) -- clear channel
 			return true
 		end
 		return false
-	end
-
-	-------------------------------------
-	-- Stop With Delay ; NOT USED - KEPT FOR REFERENCE
-	-------------------------------------
-	function M.stopWithDelay__(duration_, options_)
-	-- Solar2D API: audio.stopWithDelay( duration [, options ] )
-	-- If no parameter is passed, all channels are stopped.
-		if not duration_ then print("Error: Must provide a valid duration value."); printDebug() return false end
-		
-		if not options_ then -- stop all channels
-			for i=1, totalChannels do
-				-- if there's an audio object assigned then schedule the audio stop.
-				if channels[i].wavObj then 
-					soloudCore:scheduleStop(channels[channel].handleID, duration_ * 0.001); -- convert time to SoLoud time.
-					timer.performWithDelay(duration_, function() clearChannel(i) end) -- clear channel
-				end 
-			end
-			return true			
-		end
 	end
 
 
@@ -879,7 +884,7 @@ local M = {}
 	-- al.PITCH value is used to control the playback speed and pitch of audio source together.
 	-- SoLoud's equivalent would be setSamplerate(); affects both the speed and the pitch of the audio.
 	
-		if not channels[channel_] then print("Error: Audio handle not found: " .. tostring(channel_)); printDebug() return false end
+		if not channels[channel_] then printDebug("Error: Audio handle not found: " .. tostring(channel_)) return false end
 		soloudCore:setSamplerate(channels[channel_].handleID, channels[channel_].sampleRate * pitch_);
 	end
 
@@ -889,7 +894,7 @@ local M = {}
 	function M.setSpeed(channel_, playSpeed_)
 	-- Changes playback speed without changing speed, though it may sound the same.
 
-		if not channels[channel_] then print("Error: Audio handle not found: " .. tostring(channel_)); printDebug() return false end
+		if not channels[channel_] then printDebug("Error: Audio handle not found: " .. tostring(channel_)) return false end
 		soloudCore:setRelativePlaySpeed(channels[channel_].handleID, playSpeed_)
 	end
 

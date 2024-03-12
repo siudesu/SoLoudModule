@@ -3,12 +3,6 @@
 
 </br>
 
-## State: [Testing Phase]
-- Might find bugs. Please report any if not [already reported](https://github.com/siudesu/SoLoudModule/issues). 
-- Updates are made frequently.
-
-</br>
-
 ## Features
  - Uses same API syntax as [Solar2D's audio library](https://docs.coronalabs.com/api/library/audio/index.html)
  - Can play audio files that have been bundled using [Binary Archive](https://github.com/siudesu/BinaryArchive)
@@ -71,13 +65,13 @@ local SFX_Data = { bin.fetch( "audio/SFX/Ding.ogg" )}
 -- Create audio stream object
 local BGM1 = AUDIO.loadStreamFromArchive( "audio/BGM 01.mp3", BGM_Data )
 
--- Create audio sound object
+-- Create audio sound object using the same filename and path as reference
 local SFX1 = AUDIO.loadSoundFromArchive( "audio/SFX/Ding.ogg", SFX_Data )
 
 -- Play BGM on channel 1
 AUDIO.play( BGM1, { channel=1 })
 
--- Play SFX
+-- Play SFX on any available channel
 AUDIO.play( SFX1 )
 ```
 
