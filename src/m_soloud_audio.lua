@@ -1,5 +1,5 @@
 --  SoLoud Module
---  Last Revision: 2024.03.12
+--  Last Revision: 2024.03.15
 --	Lua version: 5.1
 --	License: MIT
 --	Copyright <2023> <siu>
@@ -39,10 +39,10 @@
 
 	What to know:
 	 1. Solar2D's audio API works via a channel/track system. A single audio takes up a single channel.
-			Channels are not shared, thus any attempt to play an audio on a busy (playing or paused audio) channel will fail.
+		Channels are not shared, thus any attempt to play an audio on a busy (playing or paused audio) channel will fail.
 
-	 2. Solar2D's framework is set to a 32 channels/tracks limit. This module simulates a 22 channels/tracks system.
-			Although, this limit is a soft cap and can be changed as desired, a higher value of 22 has been noted to cause audio silence when used simultaneously.
+	 2. Solar2D's framework is set to a 32 channels/tracks limit. This module also simulates a 32 channels/tracks system.
+		This limit is a soft cap and can be changed as desired. The maximum number of concurrent audio is hard cap at 4095 per SoLoud's docs.
 
 	 3. In order to avoid hidden side effects by using timer or transition library, in this module the following are not implemented from the original audio API:
 		-- stopWithDelay() ; This is just a timer that stops audio after the specified time has elapsed. The same can be accomplished outside of the module with a timer and AUDIO.stop();
@@ -66,10 +66,11 @@ local debugMode = true
 local M = {}
 
 	-- Initialized @ module load.
-	local totalChannels = 22	-- this is the soft cap for channels/tracks
+	local totalChannels = 32	-- this is the soft cap for channels/tracks
 	local cache = {}	-- keep track of loaded files so they are only loaded once
 	local STATE = { ["INACTIVE"] = 0, ["PLAYING"] = 1, ["PAUSED"] = 2 }
 	local soloudCore = soloud.createCore{ flags = { "CLIP_ROUNDOFF" } }
+		soloudCore:setMaxActiveVoiceCount(totalChannels)
 	local masterVolume = 1
 	local maxVolume = 1
 	local minVolume = 0
