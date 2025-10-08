@@ -409,7 +409,12 @@ local M = {}
 			if not cacheData.wavObj then printDebug("Error: Could not create wav object.") return false end
 
 			-- Get final path for debug output
-			local filePath = baseDir_ and system.pathForFile("", baseDir_) .. "\\" .. filename_ or filename_ 
+			
+			-- local filePath = baseDir_ and system.pathForFile("", baseDir_) .. "\\" .. filename_ or filename_ 
+			-- Fixed: handle nil baseDir_ and use cross-platform path separator
+			local basePath = baseDir_ and system.pathForFile("", baseDir_)
+			local filePath = basePath and (basePath .. "/" .. filename_) or filename_
+
 			if not cacheData.wavObj:load(filename_, baseDir_) then printDebug("Error: Could not load audio file: " .. filePath) return false end
 			cache[filename_] = cacheData
 		end
@@ -484,7 +489,9 @@ local M = {}
 			if not cacheData.wavObj then printDebug("Error: Could not create wav stream.") return false end
 
 			-- Get final path for debug output
-			local filePath = baseDir_ and system.pathForFile("", baseDir_) .. "\\" .. filename_ or filename_ 
+			-- local filePath = baseDir_ and system.pathForFile("", baseDir_) .. "\\" .. filename_ or filename_ 
+			local basePath = baseDir_ and system.pathForFile("", baseDir_)
+			local filePath = basePath and (basePath .. "/" .. filename_) or filename_
 			if not cacheData.wavObj:load(filename_, baseDir_) then printDebug("Error: Could not load audio file: " .. filePath) return false end
 			cache[filename_] = cacheData
 		end
@@ -580,7 +587,7 @@ local M = {}
 
 		-- set loop
 		cachedData.loops = o.loops or 0
-		if cachedData.loops > 0 then cachedData.wavObj:setLooping(cachedData.loops) end
+		if cachedData.loops >= 0 then cachedData.wavObj:setLooping(cachedData.loops) end
 		if cachedData.loops == -1 then cachedData.wavObj:setLooping(true) end
 
 		-- Piggyback onComplete to clean up channel.
